@@ -1,7 +1,8 @@
 import { Users } from 'lucide-react'
 
-function PlayerTable({ players, selectedIds, waitlistIds, currentPlayerId, spinning, activeSkill, round }) {
+function PlayerTable({ players, selectedIds, waitlistIds, currentPlayerId, spinning, activeSkill, round, kidsMode }) {
   const isLaterRound = round > 1
+  const showSkillColumn = isLaterRound || kidsMode
 
   const badgeClass = activeSkill === 'Advanced' ? 'badge-advanced' :
     activeSkill === 'Intermediate +' ? 'badge-intermediate-plus' :
@@ -27,6 +28,10 @@ function PlayerTable({ players, selectedIds, waitlistIds, currentPlayerId, spinn
           <span className="px-2 py-0.5 rounded text-[10px] font-display tracking-wider bg-neon-magenta/15 text-neon-magenta border border-neon-magenta/30">
             All Skills
           </span>
+        ) : kidsMode ? (
+          <span className="px-2 py-0.5 rounded text-[10px] font-display tracking-wider bg-neon-yellow/15 text-neon-yellow border border-neon-yellow/30">
+            All Skills
+          </span>
         ) : activeSkill && (
           <span className={`px-2 py-0.5 rounded text-[10px] font-display tracking-wider ${badgeClass}`}>
             {activeSkill}
@@ -43,7 +48,7 @@ function PlayerTable({ players, selectedIds, waitlistIds, currentPlayerId, spinn
               <tr className="text-[10px] font-display tracking-wider uppercase text-gray-500">
                 <th className="px-4 py-2">#</th>
                 <th className="px-4 py-2">Name</th>
-                {isLaterRound ? (
+                {showSkillColumn ? (
                   <th className="px-4 py-2">Skill</th>
                 ) : (
                   <th className="px-4 py-2">Category</th>
@@ -76,7 +81,7 @@ function PlayerTable({ players, selectedIds, waitlistIds, currentPlayerId, spinn
                     <td className="px-4 py-2 font-medium text-gray-200 text-xs">
                       {player.name}
                     </td>
-                    {isLaterRound ? (
+                    {showSkillColumn ? (
                       <td className="px-4 py-2">
                         <span className={`text-[10px] px-1.5 py-0.5 rounded font-display ${skillBadgeFor(player.skill)}`}>
                           {player.skill === 'Intermediate +' ? 'Int+' : player.skill.slice(0, 3).toUpperCase()}

@@ -23,6 +23,9 @@ const CATEGORY_SHORT = {
   'Kids (Upto 10 years)': 'Kids <10',
 }
 
+const ADULT_CATEGORIES = ['Mens (Age 18+ and above)', 'Womens']
+const isKidsCategory = (cat) => cat === 'Kids (Age 10-18 years)' || cat === 'Kids (Upto 10 years)'
+
 const STORAGE_KEY = 'abl26-auction-state'
 
 function loadState() {
@@ -169,11 +172,20 @@ function App() {
         prevWaitlist.has(p.id) && !selectedIds.has(p.id) && !currentSkipped.has(p.id)
       )
     }
-    // Round 1: filter by skill + category, exclude selected and waitlisted (skipped)
+    // Round 1
     const round1Waitlist = getWaitlist(1)
+    if (isKidsCategory(activeCategory)) {
+      // Kids: all skill levels, filter by category only
+      return allPlayers.filter(p =>
+        p.category === activeCategory &&
+        !selectedIds.has(p.id) &&
+        !round1Waitlist.has(p.id)
+      )
+    }
+    // Adults: filter by skill + category
     return allPlayers.filter(p =>
       p.skill === activeSkill &&
-      (activeCategory === 'All' || p.category === activeCategory) &&
+      (activeCategory === 'All' ? ADULT_CATEGORIES.includes(p.category) : p.category === activeCategory) &&
       !selectedIds.has(p.id) &&
       !round1Waitlist.has(p.id)
     )
@@ -187,9 +199,12 @@ function App() {
       const prevWaitlist = getWaitlist(round - 1)
       return allPlayers.filter(p => prevWaitlist.has(p.id))
     }
+    if (isKidsCategory(activeCategory)) {
+      return allPlayers.filter(p => p.category === activeCategory)
+    }
     return allPlayers.filter(p =>
       p.skill === activeSkill &&
-      (activeCategory === 'All' || p.category === activeCategory)
+      (activeCategory === 'All' ? ADULT_CATEGORIES.includes(p.category) : p.category === activeCategory)
     )
   }, [allPlayers, activeSkill, activeCategory, waitlists, round])
 
@@ -371,12 +386,20 @@ function App() {
       )
     } else {
       const round1Waitlist = getWaitlist(1)
-      pool = allPlayers.filter(p =>
-        p.skill === activeSkill &&
-        (activeCategory === 'All' || p.category === activeCategory) &&
-        !selectedIds.has(p.id) &&
-        !round1Waitlist.has(p.id)
-      )
+      if (isKidsCategory(activeCategory)) {
+        pool = allPlayers.filter(p =>
+          p.category === activeCategory &&
+          !selectedIds.has(p.id) &&
+          !round1Waitlist.has(p.id)
+        )
+      } else {
+        pool = allPlayers.filter(p =>
+          p.skill === activeSkill &&
+          (activeCategory === 'All' ? ADULT_CATEGORIES.includes(p.category) : p.category === activeCategory) &&
+          !selectedIds.has(p.id) &&
+          !round1Waitlist.has(p.id)
+        )
+      }
     }
 
     if (pool.length === 0) {
@@ -419,12 +442,17 @@ function App() {
   }, [allPlayers])
 
   // Stats
+  const kidsMode = isKidsCategory(activeCategory)
+  const matchesPool = (p) => {
+    if (kidsMode) return p.category === activeCategory
+    return p.skill === activeSkill && (activeCategory === 'All' ? ADULT_CATEGORIES.includes(p.category) : p.category === activeCategory)
+  }
   const totalForPool = round > 1
     ? allPlayers.filter(p => getWaitlist(round - 1).has(p.id)).length
-    : allPlayers.filter(p => p.skill === activeSkill && (activeCategory === 'All' || p.category === activeCategory)).length
+    : allPlayers.filter(matchesPool).length
   const selectedForPool = round > 1
     ? 0
-    : allPlayers.filter(p => p.skill === activeSkill && (activeCategory === 'All' || p.category === activeCategory) && selectedIds.has(p.id)).length
+    : allPlayers.filter(p => matchesPool(p) && selectedIds.has(p.id)).length
 
   // Download template CSV
   const handleDownloadTemplate = useCallback(() => {
@@ -734,11 +762,12 @@ function App() {
               ))}
             </div>
 
-            {/* Skill Level Tabs */}
-            <div className="flex flex-wrap gap-3 mb-6 justify-center">
+            {/* Skill Level Tabs — hidden for Kids categories */}
+            {!kidsMode && <div className="flex flex-wrap gap-3 mb-6 justify-center">
               {SKILL_LEVELS.map(skill => {
-                const count = allPlayers.filter(p => p.skill === skill && (activeCategory === 'All' || p.category === activeCategory)).length
-                const selCount = allPlayers.filter(p => p.skill === skill && (activeCategory === 'All' || p.category === activeCategory) && selectedIds.has(p.id)).length
+                const catFilter = (p) => activeCategory === 'All' ? ADULT_CATEGORIES.includes(p.category) : p.category === activeCategory
+                const count = allPlayers.filter(p => p.skill === skill && catFilter(p)).length
+                const selCount = allPlayers.filter(p => p.skill === skill && catFilter(p) && selectedIds.has(p.id)).length
                 const badgeClass = skill === 'Advanced' ? 'badge-advanced' :
                   skill === 'Intermediate +' ? 'badge-intermediate-plus' :
                   skill === 'Intermediate' ? 'badge-intermediate' : 'badge-beginner'
@@ -762,7 +791,22 @@ function App() {
                   </button>
                 )
               })}
-            </div>
+            </div>}
+
+            {/* Kids category header */}
+            {kidsMode && (
+              <div className="mb-6 text-center">
+                <div className="inline-flex items-center gap-3 px-6 py-3 rounded-xl border-2 border-neon-yellow/40 bg-neon-yellow/10">
+                  <Target className="w-5 h-5 text-neon-yellow" />
+                  <span className="font-display text-sm font-bold tracking-[3px] uppercase text-neon-yellow">
+                    {CATEGORY_SHORT[activeCategory]} — All Skills
+                  </span>
+                  <span className="text-xs text-neon-yellow/60 font-display">
+                    ({availablePlayers.length} players)
+                  </span>
+                </div>
+              </div>
+            )}
           </>
         ) : (
           /* Round N Header */
@@ -798,8 +842,9 @@ function App() {
               waitlistIds={getWaitlist(round)}
               currentPlayerId={currentPlayer?.id}
               spinning={spinning}
-              activeSkill={round > 1 ? null : activeSkill}
+              activeSkill={(round > 1 || kidsMode) ? null : activeSkill}
               round={round}
+              kidsMode={round <= 1 && kidsMode}
             />
           </div>
 
@@ -809,7 +854,7 @@ function App() {
               players={availablePlayers}
               spinning={spinning}
               currentPlayer={currentPlayer}
-              activeSkill={round > 1 ? `Round ${round}` : activeSkill}
+              activeSkill={round > 1 ? `Round ${round}` : kidsMode ? CATEGORY_SHORT[activeCategory] : activeSkill}
             />
 
             {/* Action Buttons */}

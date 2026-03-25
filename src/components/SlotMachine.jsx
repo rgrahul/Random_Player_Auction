@@ -73,7 +73,9 @@ function SlotMachine({ players, spinning, currentPlayer, activeSkill }) {
   }, [spinning, reelNames])
 
   const isLaterRound = activeSkill?.startsWith('Round ')
+  const isKids = activeSkill?.startsWith('Kids')
   const skillColor = isLaterRound ? 'text-neon-magenta' :
+    isKids ? 'text-neon-yellow' :
     activeSkill === 'Advanced' ? 'text-neon-magenta' :
     activeSkill === 'Intermediate +' ? 'text-neon-cyan' :
     activeSkill === 'Intermediate' ? 'text-neon-green' : 'text-neon-yellow'
@@ -86,7 +88,7 @@ function SlotMachine({ players, spinning, currentPlayer, activeSkill }) {
       {/* Skill Label */}
       <div className="text-center mb-3">
         <span className={`font-display text-xs tracking-[3px] uppercase ${skillColor}`}>
-          {isLaterRound ? `${activeSkill} — Waitlist Pool` : `${activeSkill} Pool`}
+          {isLaterRound ? `${activeSkill} — Waitlist Pool` : isKids ? `${activeSkill} — All Skills` : `${activeSkill} Pool`}
         </span>
       </div>
 
@@ -137,6 +139,7 @@ function SlotMachine({ players, spinning, currentPlayer, activeSkill }) {
               <h2 className={`font-display text-2xl md:text-3xl font-black tracking-wider ${skillColor}`}
                 style={{
                   textShadow: (isLaterRound || activeSkill === 'Advanced') ? '0 0 30px rgba(255,0,255,0.5)' :
+                    isKids ? '0 0 30px rgba(255,230,0,0.5)' :
                     activeSkill === 'Intermediate +' ? '0 0 30px rgba(0,255,247,0.5)' :
                     activeSkill === 'Intermediate' ? '0 0 30px rgba(57,255,20,0.5)' :
                     '0 0 30px rgba(255,230,0,0.5)'
