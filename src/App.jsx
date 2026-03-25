@@ -465,7 +465,7 @@ function App() {
           {/* Hero Banner */}
           <div className="relative mb-6 rounded-2xl overflow-hidden border border-slot-border shadow-[0_0_40px_rgba(0,100,255,0.15)]">
             <img
-              src="/abl-banner.jpg"
+              src={`${import.meta.env.BASE_URL}abl-banner.jpg`}
               alt="ABL 2026 - Assetz Badminton League"
               className="w-full h-auto"
             />
@@ -557,7 +557,7 @@ function App() {
           {/* Hero Banner */}
           <div className="relative mb-6 rounded-2xl overflow-hidden border border-slot-border shadow-[0_0_40px_rgba(0,100,255,0.15)] max-w-md mx-auto">
             <img
-              src="/abl-banner.jpg"
+              src={`${import.meta.env.BASE_URL}abl-banner.jpg`}
               alt="ABL 2026 - Assetz Badminton League"
               className="w-full h-auto"
             />
@@ -654,7 +654,7 @@ function App() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <img
-                src="/abl-banner.jpg"
+                src={`${import.meta.env.BASE_URL}abl-banner.jpg`}
                 alt="ABL 2026"
                 className="h-10 w-auto rounded-md border border-slot-border object-cover object-center"
                 style={{ aspectRatio: '3/1' }}
