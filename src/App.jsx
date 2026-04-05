@@ -92,6 +92,11 @@ function App() {
   const [teams, setTeams] = useState([])
   const [teamAssignments, setTeamAssignments] = useState({}) // { [playerId]: teamId }
   const [showRosterModal, setShowRosterModal] = useState(false)
+  const [autoAssignPhase, setAutoAssignPhase] = useState(null) // null | 'spinning' | 'revealing' | 'assigning'
+  const [autoAssignCurrent, setAutoAssignCurrent] = useState(null) // { player, teamId, teamName }
+  const [autoAssignProgress, setAutoAssignProgress] = useState({ current: 0, total: 0 })
+  const autoAssignStopRef = useRef(false)
+  const appliedRef = useRef([])
   const simulateRef = useRef(false)
   const fileInputRef = useRef(null)
   const teamsFileInputRef = useRef(null)
@@ -319,8 +324,20 @@ function App() {
     setCurrentPlayer(null)
   }, [currentPlayer, round])
 
+  const handleStopAutoAssign = useCallback(() => {
+    autoAssignStopRef.current = true
+    if (appliedRef.current.length > 0) {
+      setHistory(prev => [...prev, { type: 'auto-assign', assignments: [...appliedRef.current], round }])
+    }
+    appliedRef.current = []
+    setAutoAssignPhase(null)
+    setAutoAssignCurrent(null)
+    setAutoAssignProgress({ current: 0, total: 0 })
+  }, [round])
+
   const handleAutoAssign = useCallback(() => {
-    if (teams.length === 0) return
+    if (teams.length === 0 || autoAssigning) return
+
     const CAT_MAP = {
       mens: 'Mens (Age 18+ and above)',
       womens: 'Womens',
@@ -328,20 +345,15 @@ function App() {
       kidsUnder10: 'Kids (Upto 10 years)',
     }
 
-    const newAssignments = { ...teamAssignments }
-    const newSelectedIds = new Set(selectedIds)
-    const assignedThisAction = []
+    const snapAssignments = { ...teamAssignments }
+    const snapSelected = new Set(selectedIds)
+    const queue = []
 
     for (const [catKey, catFull] of Object.entries(CAT_MAP)) {
-      // Unassigned players in this category
-      const unassigned = shuffle(
-        allPlayers.filter(p => p.category === catFull && !newSelectedIds.has(p.id))
-      )
-
-      // Build slot pool: one entry per remaining slot per team
+      const unassigned = shuffle(allPlayers.filter(p => p.category === catFull && !snapSelected.has(p.id)))
       const slotPool = shuffle(
         teams.flatMap(team => {
-          const used = Object.entries(newAssignments)
+          const used = Object.entries(snapAssignments)
             .filter(([, tid]) => tid === team.id)
             .map(([pid]) => allPlayers.find(p => p.id === parseInt(pid)))
             .filter(p => p?.category === catFull).length
@@ -349,27 +361,74 @@ function App() {
           return Array(Math.max(0, remaining)).fill(team.id)
         })
       )
-
       const count = Math.min(unassigned.length, slotPool.length)
       for (let i = 0; i < count; i++) {
-        const player = unassigned[i]
-        const teamId = slotPool[i]
-        newAssignments[player.id] = teamId
-        newSelectedIds.add(player.id)
-        assignedThisAction.push({ player, teamId })
+        queue.push({
+          player: unassigned[i],
+          teamId: slotPool[i],
+          teamName: teams.find(t => t.id === slotPool[i])?.name || '',
+        })
       }
     }
 
-    if (assignedThisAction.length === 0) {
+    if (queue.length === 0) {
       alert('No players could be assigned. All slots may be full or no unassigned players remain.')
       return
     }
 
-    setTeamAssignments(newAssignments)
-    setSelectedIds(newSelectedIds)
-    setHistory(prev => [...prev, { type: 'auto-assign', assignments: assignedThisAction, round }])
+    // Target 2.5 minutes, per-player timing clamped 1.2s–4s
+    const TARGET_MS = 2.5 * 60 * 1000
+    const perPlayer = Math.min(Math.max(TARGET_MS / queue.length, 1200), 4000)
+    const spinMs   = Math.round(perPlayer * 0.35)
+    const revealMs = Math.round(perPlayer * 0.28)
+    const assignMs = Math.round(perPlayer * 0.37)
+
+    const capturedRound = round
+    autoAssignStopRef.current = false
+    appliedRef.current = []
     setCurrentPlayer(null)
-  }, [teams, teamAssignments, selectedIds, allPlayers, round])
+
+    const processNext = (index) => {
+      if (autoAssignStopRef.current) return
+      if (index >= queue.length) {
+        // All done
+        setHistory(prev => [...prev, { type: 'auto-assign', assignments: [...appliedRef.current], round: capturedRound }])
+        appliedRef.current = []
+        setAutoAssignPhase(null)
+        setAutoAssignCurrent(null)
+        setAutoAssignProgress({ current: 0, total: 0 })
+        return
+      }
+
+      const item = queue[index]
+      setAutoAssignProgress({ current: index + 1, total: queue.length })
+
+      // Phase 1: spin
+      setAutoAssignPhase('spinning')
+      setAutoAssignCurrent(null)
+
+      setTimeout(() => {
+        if (autoAssignStopRef.current) return
+        // Phase 2: reveal player
+        setAutoAssignPhase('revealing')
+        setAutoAssignCurrent(item)
+
+        setTimeout(() => {
+          if (autoAssignStopRef.current) return
+          // Phase 3: show team assignment + apply
+          setAutoAssignPhase('assigning')
+          setSelectedIds(prev => new Set([...prev, item.player.id]))
+          setTeamAssignments(prev => ({ ...prev, [item.player.id]: item.teamId }))
+          appliedRef.current.push(item)
+
+          setTimeout(() => processNext(index + 1), assignMs)
+        }, revealMs)
+      }, spinMs)
+    }
+
+    setAutoAssignPhase('spinning')
+    processNext(0)
+  }, [teams, teamAssignments, selectedIds, allPlayers, round, autoAssignPhase])
 
   const handleSkip = useCallback(() => {
     if (!currentPlayer) return
@@ -597,6 +656,8 @@ function App() {
     })
     setHistory(prev => [...prev, { type: 'restore', player: allPlayers.find(p => p.id === playerId), round: fromRound }])
   }, [allPlayers])
+
+  const autoAssigning = autoAssignPhase !== null
 
   // Team usage: how many of each category are assigned to a given team
   const getTeamUsage = (teamId) => {
@@ -1095,6 +1156,9 @@ function App() {
               spinning={spinning}
               currentPlayer={currentPlayer}
               activeSkill={round > 1 ? `Round ${round}` : kidsMode ? CATEGORY_SHORT[activeCategory] : activeSkill}
+              autoAssignPhase={autoAssignPhase}
+              autoAssignCurrent={autoAssignCurrent}
+              autoAssignProgress={autoAssignProgress}
             />
 
             {/* Action Buttons */}
@@ -1102,7 +1166,7 @@ function App() {
               <button
                 className="btn-neon btn-spin flex items-center justify-center gap-2 col-span-2"
                 onClick={handleSpin}
-                disabled={spinning || simulating || availablePlayers.length === 0}
+                disabled={spinning || simulating || autoAssigning || availablePlayers.length === 0}
               >
                 <Dices className="w-5 h-5" />
                 {spinning ? 'Spinning...' : availablePlayers.length === 0 ? 'Pool Empty' : 'Spin'}
@@ -1163,16 +1227,26 @@ function App() {
               )}
             </div>
 
-            {/* Auto Assign button — shown when teams loaded */}
+            {/* Auto Assign / Stop button */}
             {teams.length > 0 && (
-              <button
-                onClick={handleAutoAssign}
-                disabled={spinning || simulating}
-                className="mt-4 w-full flex items-center justify-center gap-2 font-display font-bold text-sm tracking-widest uppercase px-4 py-3 rounded-lg border-2 border-neon-magenta text-neon-magenta bg-neon-magenta/10 shadow-[0_0_20px_rgba(255,0,255,0.2)] hover:bg-neon-magenta/20 hover:shadow-[0_0_30px_rgba(255,0,255,0.4)] transition-all duration-300 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <Zap className="w-4 h-4" />
-                Auto Assign All Players
-              </button>
+              autoAssigning ? (
+                <button
+                  onClick={handleStopAutoAssign}
+                  className="mt-4 w-full flex items-center justify-center gap-2 font-display font-bold text-sm tracking-widest uppercase px-4 py-3 rounded-lg border-2 border-red-500 text-red-400 bg-red-500/10 hover:bg-red-500/20 transition-all duration-300 cursor-pointer"
+                >
+                  <Square className="w-4 h-4" />
+                  Stop Auto Assign ({autoAssignProgress.current}/{autoAssignProgress.total})
+                </button>
+              ) : (
+                <button
+                  onClick={handleAutoAssign}
+                  disabled={spinning || simulating}
+                  className="mt-4 w-full flex items-center justify-center gap-2 font-display font-bold text-sm tracking-widest uppercase px-4 py-3 rounded-lg border-2 border-neon-magenta text-neon-magenta bg-neon-magenta/10 shadow-[0_0_20px_rgba(255,0,255,0.2)] hover:bg-neon-magenta/20 hover:shadow-[0_0_30px_rgba(255,0,255,0.4)] transition-all duration-300 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <Zap className="w-4 h-4" />
+                  Auto Assign All Players
+                </button>
+              )
             )}
 
             {/* Team Assignment Grid — shown when teams loaded and player revealed */}
